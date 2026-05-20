@@ -1,8 +1,19 @@
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+/* Row structure to store records.
+ * Table structure to store the rows.
+ * Divide the table into multiple pages (4kb)
+ *
+ * Need to store the data such that the values are stored contiguously, so as to
+ * efficiently read and write.
+ *
+ * For now, hard coded database i.e, only one table
+ * with 3 columns (id, name, email).
+ */
 typedef struct {
     char *buffer;
     size_t buffer_length;
@@ -19,10 +30,52 @@ typedef enum { META_SUCCESS, META_ERROR } MetaCommandResult;
 typedef enum { PREPARE_SUCCESS, PREPARE_ERROR } PrepareResult;
 typedef enum { EXECUTE_SUCCESS, EXECUTE_ERROR } ExecuteResult;
 
+#define COLUMN_USERNAME_SIZE 32
+#define COLUMN_EMAIL_SIZE 255
+
+typedef struct {
+    uint32_t id;
+    char name[COLUMN_USERNAME_SIZE];
+    char email[COLUMN_EMAIL_SIZE];
+} Row;
+
 typedef struct {
     StatementType type;
+    Row row_to_insert;
 } Statement;
 
+#define size_of_attribute(Struct, Attrib) (sizeof((Struct *)0)->Attrib)
+const uint32_t ID_SIZE = size_of_attribute(Row, id);
+const uint32_t USERNAME_SIZE = size_of_attribute(Row, name);
+const uint32_t EMAIL_SIZE = size_of_attribute(Row, email);
+const uint32_t ID_OFFSET = 0;
+const uint32_t USERNAME_OFFSET = ID_SIZE;
+const uint32_t EMAIL_OFFSET = ID_SIZE + USERNAME_SIZE;
+const uint32_t ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE;
+
+#define PAGE_SIZE 4096
+#define MAX_NO_OF_PAGES 100
+const uint32_t ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE;
+const uint32_t MAX_ROWS_TABLE = ROWS_PER_PAGE * MAX_NO_OF_PAGES;
+
+typedef struct {
+    uint32_t num_of_rows;
+    void *pages[MAX_NO_OF_PAGES];
+} Table;
+
+Table *new_table() {
+    Table *table = (Table *)malloc(sizeof(Table));
+    table->num_of_rows = 0;
+    for (uint32_t i = 0; i < MAX_NO_OF_PAGES; ++i)
+        table->pages[i] = NULL;
+    return table;
+}
+
+void free_table(Table *table) {
+    for (uint32_t i = 0; i < MAX_NO_OF_PAGES; ++i)
+        free(table->pages[i]);
+    free(table);
+}
 InputBuffer *new_input_buffer() {
     InputBuffer *input_buffer = (InputBuffer *)malloc(sizeof(InputBuffer));
     input_buffer->buffer = NULL;
